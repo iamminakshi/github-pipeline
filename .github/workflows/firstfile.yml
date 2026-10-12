@@ -1,5 +1,4 @@
-
-name: First GitHub Actions Workflow
+name: First GitHub Actions Workflowv2
 
 on:
   push:
@@ -11,24 +10,86 @@ on:
       - main
 
   workflow_dispatch:
+env:
+    app_name: Axion-app
+    REGION: ${{ vars.AZURE_REGION }}
+    KEYVAULT: ${{ vars.KEYVAULT_NAME }}
+    SECRET_NAME: DB-PASSWORD
 
 permissions:
+  id-token: write
   contents: read
 
 jobs:
   validate:
     name: Validate Repository
     runs-on: ubuntu-latest
+  
 
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          auth-type: SERVICE_PRINCIPAL
+          creds: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      - name:  verify azure login
+        run: |
+          az account show
+
+      - name: Discover Key Vault and Secret
+        run: |
+          set -euo pipefail
+
+          RESOURCE_GROUP="Rg_aks"
+
+      
+          KEYVAULT_NAME=$(az keyvault list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[0].name" \
+            --output tsv)
+
+
+          echo "Key Vault discovered: $KEYVAULT_NAME"
+
+     
+          SECRET_NAME=$(az keyvault secret list \
+            --vault-name "$KEYVAULT_NAME" \
+            --query "[?tags.purpose=='db-password' && attributes.enabled==\`true\`].name | [0]" \
+            --output tsv)
+
+
+
+          echo "Secret name discovered: $SECRET_NAME"
+
+          # Fetch the actual secret value
+          SECRET_VALUE=$(az keyvault secret show \
+            --vault-name "$KEYVAULT_NAME" \
+            --name "$SECRET_NAME" \
+            --query value \
+            --output tsv)
+
+          
+
+          echo "::add-mask::$SECRET_VALUE"
+          echo "$SECRET_VALUE"
+
+
+          
       - name: Show Repository Information
         run: |
           echo "Repository: $GITHUB_REPOSITORY"
           echo "Branch: $GITHUB_REF_NAME"
           echo "Workflow started successfully"
+          
+      - name: Show information
+        run: |
+          echo "$GITHUB_REF"
+          echo "$GITHUB_SHA"
+          echo "$GITHUB_ACTOR"
 
       - name: Validate Execution
         run: |
@@ -36,3 +97,10 @@ jobs:
           test -d .git
           echo "Validation successful"
           
+      - name:  Show application name
+        run: |
+           echo "$app_name"
+
+      - name: Show Azure region
+        run: |
+           echo "$REGION"
